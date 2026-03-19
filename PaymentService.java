@@ -19,7 +19,7 @@ public class PaymentService {
     
     public PaymentProcessResult processPayment(int orderId, double amount, String paymentMethod) {
         try {
-            // Verify order exists
+            // this verfies the existence of the order and also retrieves the order total for validation
             Order order = orderDAO.findById(orderId);
             if (order == null) {
                 return new PaymentProcessResult(false, "Order not found.");
@@ -41,10 +41,7 @@ public class PaymentService {
             int paymentId = paymentDAO.create(payment);
             
             if (paymentId > 0) {
-                // Mark payment as completed
                 paymentDAO.updateStatus(paymentId, "COMPLETED");
-                
-                // Update order status to COMPLETED
                 orderDAO.updateStatus(orderId, "COMPLETED");
                 
                 Payment completedPayment = new Payment(paymentId, orderId, amount, paymentMethod, "COMPLETED", payment.getPaymentDate());

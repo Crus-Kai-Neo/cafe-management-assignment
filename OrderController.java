@@ -35,10 +35,6 @@ public class OrderController {
         order.getItems().removeIf(oi -> oi.getMenuItem().getId() == menuItemId);
     }
 
-    /**
-     * Saves the order to the database, assigns its generated ID, and marks it COMPLETED.
-     * Returns true on success, false if the order is empty or a DB error occurs.
-     */
     public boolean placeOrder(Order order) {
         if (order.getItems().isEmpty()) return false;
         try {

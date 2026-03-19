@@ -89,8 +89,7 @@ public class UserRegistrationService {
             System.err.println("Error checking email existence: " + e.getMessage());
             return new RegistrationResult(false, "Database error occurred. Please try again.");
         }
-        
-        // Create new user
+
         try {
             User newUser = new User(username, password, email, Role.CUSTOMER);
             int userId = userDAO.create(newUser);

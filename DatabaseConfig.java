@@ -58,8 +58,6 @@ public class DatabaseConfig {
     }
     
     public static void setDatabaseConfig(String host, int port, String database, String user, String password) {
-        // Allow for configuration override before pool initialization
-        // This is useful for testing or different environments
     }
 }
 

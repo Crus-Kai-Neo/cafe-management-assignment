@@ -37,7 +37,6 @@ public class DatabaseInitializer {
     
     public void seedDatabaseIfNeeded() {
         try {
-            // Check if data already exists
             List<User> users = userDAO.findAll();
             if (!users.isEmpty()) {
                 System.out.println("Database already seeded. Skipping seed data insertion.");
@@ -45,8 +44,7 @@ public class DatabaseInitializer {
             }
             
             System.out.println("Seeding database with initial data...");
-            
-            // Seed users
+
             User admin = new User("admin", "Admin123", "admin@cafe.local", Role.ADMIN);
             User cashier = new User("cashier", "Cash123", "cashier@cafe.local", Role.CASHIER);
             User customer = new User("customer", "Cust123", "customer@cafe.local", Role.CUSTOMER);
@@ -54,8 +52,7 @@ public class DatabaseInitializer {
             userDAO.create(admin);
             userDAO.create(cashier);
             userDAO.create(customer);
-            
-            // Seed menu items
+
             MenuItem espresso = new MenuItem(1, "Espresso", 3.00);
             MenuItem cappuccino = new MenuItem(2, "Cappuccino", 4.50);
             MenuItem latte = new MenuItem(3, "Latte", 4.00);
@@ -102,8 +99,7 @@ public class DatabaseInitializer {
         ObservableList<Order> orders = FXCollections.observableArrayList();
         try {
             List<Order> completedOrders = orderDAO.findByStatus("COMPLETED");
-            
-            // Load order items for each order
+
             for (Order order : completedOrders) {
                 List<model.OrderItem> items = orderItemDAO.findByOrderId(order.getId(), menuItemDAO);
                 order.getItems().addAll(items);
