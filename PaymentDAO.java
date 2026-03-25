@@ -2,69 +2,126 @@ package dao;
 
 import model.Payment;
 
-import java.sql.SQLException;
+import java.sql.*;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
 
 public class PaymentDAO extends BaseDAO {
-    private static final AtomicInteger ID_SEQ = new AtomicInteger(1);
-    private static final Map<Integer, Payment> PAYMENTS = new ConcurrentHashMap<>();
-    private static final Map<Integer, Integer> ORDER_TO_PAYMENT = new ConcurrentHashMap<>();
-    
+
     public int create(Payment payment) throws SQLException {
-        if (ORDER_TO_PAYMENT.containsKey(payment.getOrderId())) {
+        if (findByOrderId(payment.getOrderId()) != null) {
             throw new SQLException("Payment already exists for this order.");
         }
-        int id = ID_SEQ.getAndIncrement();
-        Payment stored = new Payment(id, payment.getOrderId(), payment.getAmount(), payment.getPaymentMethod(), payment.getPaymentStatus(), payment.getPaymentDate());
-        PAYMENTS.put(id, stored);
-        ORDER_TO_PAYMENT.put(payment.getOrderId(), id);
-        return id;
+        String sql = "INSERT INTO payments (order_id, amount, payment_method, payment_status, payment_date) " +
+                     "VALUES (?, ?, ?, ?, ?)";
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+            stmt.setInt(1, payment.getOrderId());
+            stmt.setDouble(2, payment.getAmount());
+            stmt.setString(3, payment.getPaymentMethod());
+            stmt.setString(4, payment.getPaymentStatus());
+            stmt.setTimestamp(5, Timestamp.valueOf(payment.getPaymentDate()));
+            stmt.executeUpdate();
+            try (ResultSet keys = stmt.getGeneratedKeys()) {
+                if (keys.next()) {
+                    return keys.getInt(1);
+                }
+            }
+        }
+        throw new SQLException("Failed to create payment, no generated key returned.");
     }
-    
+
     public Payment findById(int paymentId) throws SQLException {
-        return PAYMENTS.get(paymentId);
+        String sql = "SELECT payment_id, order_id, amount, payment_method, payment_status, payment_date " +
+                     "FROM payments WHERE payment_id = ?";
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, paymentId);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    return mapRow(rs);
+                }
+            }
+        }
+        return null;
     }
-    
+
     public Payment findByOrderId(int orderId) throws SQLException {
-        Integer paymentId = ORDER_TO_PAYMENT.get(orderId);
-        return paymentId == null ? null : PAYMENTS.get(paymentId);
+        String sql = "SELECT payment_id, order_id, amount, payment_method, payment_status, payment_date " +
+                     "FROM payments WHERE order_id = ?";
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, orderId);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    return mapRow(rs);
+                }
+            }
+        }
+        return null;
     }
-    
+
     public List<Payment> findAll() throws SQLException {
-        return new ArrayList<>(PAYMENTS.values());
-    }
-    
-    public List<Payment> findByStatus(String paymentStatus) throws SQLException {
         List<Payment> payments = new ArrayList<>();
-        for (Payment payment : PAYMENTS.values()) {
-            if (paymentStatus.equals(payment.getPaymentStatus())) {
-                payments.add(payment);
+        String sql = "SELECT payment_id, order_id, amount, payment_method, payment_status, payment_date " +
+                     "FROM payments";
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+            while (rs.next()) {
+                payments.add(mapRow(rs));
             }
         }
         return payments;
     }
-    
-    public boolean updateStatus(int paymentId, String paymentStatus) throws SQLException {
-        Payment existing = PAYMENTS.get(paymentId);
-        if (existing == null) {
-            return false;
+
+    public List<Payment> findByStatus(String paymentStatus) throws SQLException {
+        List<Payment> payments = new ArrayList<>();
+        String sql = "SELECT payment_id, order_id, amount, payment_method, payment_status, payment_date " +
+                     "FROM payments WHERE payment_status = ?";
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, paymentStatus);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    payments.add(mapRow(rs));
+                }
+            }
         }
-        Payment updated = new Payment(existing.getPaymentId(), existing.getOrderId(), existing.getAmount(), existing.getPaymentMethod(), paymentStatus, existing.getPaymentDate());
-        PAYMENTS.put(paymentId, updated);
-        return true;
+        return payments;
     }
-    
-    public boolean delete(int paymentId) throws SQLException {
-        Payment removed = PAYMENTS.remove(paymentId);
-        if (removed != null) {
-            ORDER_TO_PAYMENT.remove(removed.getOrderId());
-            return true;
+
+    public boolean updateStatus(int paymentId, String paymentStatus) throws SQLException {
+        String sql = "UPDATE payments SET payment_status = ? WHERE payment_id = ?";
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, paymentStatus);
+            stmt.setInt(2, paymentId);
+            return stmt.executeUpdate() > 0;
         }
-        return false;
+    }
+
+    public boolean delete(int paymentId) throws SQLException {
+        String sql = "DELETE FROM payments WHERE payment_id = ?";
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, paymentId);
+            return stmt.executeUpdate() > 0;
+        }
+    }
+
+    private Payment mapRow(ResultSet rs) throws SQLException {
+        Timestamp ts = rs.getTimestamp("payment_date");
+        LocalDateTime paymentDate = ts != null ? ts.toLocalDateTime() : LocalDateTime.now();
+        return new Payment(
+            rs.getInt("payment_id"),
+            rs.getInt("order_id"),
+            rs.getDouble("amount"),
+            rs.getString("payment_method"),
+            rs.getString("payment_status"),
+            paymentDate
+        );
     }
 }
 

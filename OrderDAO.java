@@ -2,66 +2,122 @@ package dao;
 
 import model.Order;
 
-import java.sql.SQLException;
+import java.sql.*;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
 
 public class OrderDAO extends BaseDAO {
-    private static final AtomicInteger ID_SEQ = new AtomicInteger(1);
-    private static final Map<Integer, Order> ORDERS = new ConcurrentHashMap<>();
-    
+
     public int create(Order order) throws SQLException {
-        int id = ID_SEQ.getAndIncrement();
-        Order stored = new Order(id, order.getUserId(), order.getPlacedBy(), LocalDateTime.now());
-        stored.setStatus(order.getStatus());
-        stored.getItems().addAll(order.getItems());
-        ORDERS.put(id, stored);
-        return id;
+        String sql = "INSERT INTO orders (user_id, status) VALUES (?, ?)";
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+            stmt.setInt(1, order.getUserId());
+            stmt.setString(2, order.getStatus());
+            stmt.executeUpdate();
+            try (ResultSet keys = stmt.getGeneratedKeys()) {
+                if (keys.next()) {
+                    return keys.getInt(1);
+                }
+            }
+        }
+        throw new SQLException("Failed to create order, no generated key returned.");
     }
-    
+
     public Order findById(int orderId) throws SQLException {
-        return ORDERS.get(orderId);
+        String sql = "SELECT o.order_id, o.user_id, o.status, o.order_date, u.username " +
+                     "FROM orders o JOIN users u ON o.user_id = u.user_id " +
+                     "WHERE o.order_id = ?";
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, orderId);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    return mapRow(rs);
+                }
+            }
+        }
+        return null;
     }
-    
+
     public List<Order> findByUserId(int userId) throws SQLException {
         List<Order> orders = new ArrayList<>();
-        for (Order order : ORDERS.values()) {
-            if (order.getUserId() == userId) {
-                orders.add(order);
+        String sql = "SELECT o.order_id, o.user_id, o.status, o.order_date, u.username " +
+                     "FROM orders o JOIN users u ON o.user_id = u.user_id " +
+                     "WHERE o.user_id = ?";
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, userId);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    orders.add(mapRow(rs));
+                }
             }
         }
         return orders;
     }
-    
+
     public List<Order> findAll() throws SQLException {
-        return new ArrayList<>(ORDERS.values());
+        List<Order> orders = new ArrayList<>();
+        String sql = "SELECT o.order_id, o.user_id, o.status, o.order_date, u.username " +
+                     "FROM orders o JOIN users u ON o.user_id = u.user_id";
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+            while (rs.next()) {
+                orders.add(mapRow(rs));
+            }
+        }
+        return orders;
     }
-    
+
     public List<Order> findByStatus(String status) throws SQLException {
         List<Order> orders = new ArrayList<>();
-        for (Order order : ORDERS.values()) {
-            if (status.equals(order.getStatus())) {
-                orders.add(order);
+        String sql = "SELECT o.order_id, o.user_id, o.status, o.order_date, u.username " +
+                     "FROM orders o JOIN users u ON o.user_id = u.user_id " +
+                     "WHERE o.status = ?";
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, status);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    orders.add(mapRow(rs));
+                }
             }
         }
         return orders;
     }
-    
+
     public boolean updateStatus(int orderId, String status) throws SQLException {
-        Order order = ORDERS.get(orderId);
-        if (order == null) {
-            return false;
+        String sql = "UPDATE orders SET status = ? WHERE order_id = ?";
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, status);
+            stmt.setInt(2, orderId);
+            return stmt.executeUpdate() > 0;
         }
-        order.setStatus(status);
-        return true;
     }
-    
+
     public boolean delete(int orderId) throws SQLException {
-        return ORDERS.remove(orderId) != null;
+        String sql = "DELETE FROM orders WHERE order_id = ?";
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, orderId);
+            return stmt.executeUpdate() > 0;
+        }
+    }
+
+    private Order mapRow(ResultSet rs) throws SQLException {
+        int id = rs.getInt("order_id");
+        int userId = rs.getInt("user_id");
+        String placedBy = rs.getString("username");
+        Timestamp ts = rs.getTimestamp("order_date");
+        LocalDateTime orderDate = ts != null ? ts.toLocalDateTime() : LocalDateTime.now();
+        String status = rs.getString("status");
+        Order order = new Order(id, userId, placedBy, orderDate);
+        order.setStatus(status);
+        return order;
     }
 }
 
