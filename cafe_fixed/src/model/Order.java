@@ -1,0 +1,44 @@
+package model;
+
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+
+public class Order {
+    private int id;
+    private final int userId;
+    private final String placedBy;
+    private final LocalDateTime createdAt;
+    private String status;
+    private int paymentId; //
+    private final List<OrderItem> items = new ArrayList<>();
+
+    public Order(int id, int userId, String placedBy, LocalDateTime createdAt) {
+        this.id = id;
+        this.userId = userId;
+        this.placedBy = placedBy;
+        this.createdAt = createdAt;
+        this.status = "PENDING";
+        this.paymentId = -1;
+    }
+
+    public Order(int userId, String placedBy) {
+        this(-1, userId, placedBy, LocalDateTime.now());
+    }
+
+    public int getId() { return id; }
+    public int getUserId() { return userId; }
+    public String getPlacedBy() { return placedBy; }
+    public LocalDateTime getCreatedAt() { return createdAt; }
+    public String getStatus() { return status; }
+    public List<OrderItem> getItems() { return items; }
+    public int getPaymentId() { return paymentId; }
+
+    public void setStatus(String status) { this.status = status; }
+    public void setPaymentId(int paymentId) { this.paymentId = paymentId; }
+    public void setId(int id) { this.id = id; }
+
+    public double getTotal() {
+        return items.stream().mapToDouble(OrderItem::getSubtotal).sum();
+    }
+}
