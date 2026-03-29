@@ -38,16 +38,16 @@ public class OrderController {
     public boolean placeOrder(Order order) {
         if (order.getItems().isEmpty()) return false;
         try {
+            order.setStatus("PENDING");
             int orderId = orderDAO.create(order);
             order.setId(orderId);
-            order.setStatus("COMPLETED");
             for (OrderItem item : order.getItems()) {
                 orderItemDAO.create(orderId,
                     item.getMenuItem().getId(),
                     item.getQuantity(),
                     item.getSubtotal());
             }
-            orderDAO.updateStatus(orderId, "COMPLETED");
+            orderDAO.updateStatus(orderId, "PENDING");
             return true;
         } catch (SQLException e) {
             System.err.println("Error placing order: " + e.getMessage());

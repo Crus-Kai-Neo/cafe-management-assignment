@@ -102,6 +102,9 @@ public class DatabaseConfig {
         try (Connection serverConn = DriverManager.getConnection(serverJdbcUrl, dbUser, dbPassword);
              Statement stmt = serverConn.createStatement()) {
             stmt.executeUpdate("CREATE DATABASE IF NOT EXISTS `" + dbName + "`");
+        } catch (SQLException ex) {
+            // If user lacks CREATE privilege but DB already exists, continue and try using it.
+            System.err.println("Warning: could not create database automatically: " + ex.getMessage());
         }
 
         try (Connection dbConn = DriverManager.getConnection(databaseJdbcUrl, dbUser, dbPassword);
@@ -135,7 +138,7 @@ public class DatabaseConfig {
                 CREATE TABLE IF NOT EXISTS orders (
                     order_id INT PRIMARY KEY AUTO_INCREMENT,
                     user_id INT NOT NULL,
-                    status ENUM('PENDING', 'COMPLETED', 'CANCELED') NOT NULL DEFAULT 'PENDING',
+                    status ENUM('PENDING', 'CONFIRMED', 'PAYMENT_PENDING', 'COMPLETED', 'CANCELED') NOT NULL DEFAULT 'PENDING',
                     order_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -145,6 +148,18 @@ public class DatabaseConfig {
                     FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
                 """);
+
+            // Keep older databases compatible by upgrading enum values in-place.
+            try {
+                stmt.executeUpdate("""
+                    ALTER TABLE orders
+                    MODIFY COLUMN status ENUM('PENDING', 'CONFIRMED', 'PAYMENT_PENDING', 'COMPLETED', 'CANCELED')
+                    NOT NULL DEFAULT 'PENDING'
+                    """);
+            } catch (SQLException ex) {
+                // Do not block login/registration if ALTER privilege is unavailable.
+                System.err.println("Warning: could not alter orders.status automatically: " + ex.getMessage());
+            }
 
             stmt.executeUpdate("""
                 CREATE TABLE IF NOT EXISTS order_items (
@@ -199,4 +214,3 @@ public class DatabaseConfig {
         return msg;
     }
 }
-

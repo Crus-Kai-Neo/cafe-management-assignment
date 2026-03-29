@@ -80,4 +80,40 @@ public class OrderItemDAO extends BaseDAO {
             return stmt.executeUpdate() > 0;
         }
     }
+
+    public String findMostPopularCompletedItem() throws SQLException {
+        String sql = "SELECT mi.name, SUM(oi.quantity) AS qty_sold " +
+                "FROM order_items oi " +
+                "JOIN orders o ON oi.order_id = o.order_id " +
+                "JOIN menu_items mi ON oi.item_id = mi.item_id " +
+                "WHERE o.status = 'COMPLETED' " +
+                "GROUP BY mi.item_id, mi.name " +
+                "ORDER BY qty_sold DESC LIMIT 1";
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+            if (rs.next()) {
+                return rs.getString("name") + " (" + rs.getInt("qty_sold") + " sold)";
+            }
+        }
+        return "N/A";
+    }
+
+    public String findMostProfitableCompletedItem() throws SQLException {
+        String sql = "SELECT mi.name, SUM(oi.subtotal) AS revenue " +
+                "FROM order_items oi " +
+                "JOIN orders o ON oi.order_id = o.order_id " +
+                "JOIN menu_items mi ON oi.item_id = mi.item_id " +
+                "WHERE o.status = 'COMPLETED' " +
+                "GROUP BY mi.item_id, mi.name " +
+                "ORDER BY revenue DESC LIMIT 1";
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+            if (rs.next()) {
+                return rs.getString("name") + " ($" + String.format("%.2f", rs.getDouble("revenue")) + ")";
+            }
+        }
+        return "N/A";
+    }
 }

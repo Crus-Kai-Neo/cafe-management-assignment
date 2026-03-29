@@ -91,6 +91,7 @@ public class AdminDashboardView {
         // Menu management section
         VBox menuMgmt = buildMenuManagement();
         menuMgmt.setMaxWidth(Double.MAX_VALUE); // Expand
+        menuMgmt.setMinHeight(400); // Ensure adequate space for table
 
         // Left column
         VBox leftColumn = new VBox(12, analyticsBox, menuMgmt);
@@ -122,9 +123,14 @@ public class AdminDashboardView {
         HBox.setHgrow(ordersBox, Priority.ALWAYS);
 
         mainContent.getChildren().add(center);
+        
+        // Wrap main content in ScrollPane
+        ScrollPane scrollPane = new ScrollPane(mainContent);
+        scrollPane.setFitToWidth(true);
+        scrollPane.setStyle("-fx-background-color: #F9FAFB;");
 
         root.setTop(topBar);
-        root.setCenter(mainContent);
+        root.setCenter(scrollPane);
 
         refreshStats();
     }
@@ -135,12 +141,12 @@ public class AdminDashboardView {
         TableColumn<Order, String> idCol = new TableColumn<>("Order ID");
         idCol.setCellValueFactory(c -> new javafx.beans.property.SimpleStringProperty(String.valueOf(c.getValue().getId())));
 
-        TableColumn<Order, String> byCol = new TableColumn<>("User ID");
-        byCol.setCellValueFactory(c -> new javafx.beans.property.SimpleStringProperty(String.valueOf(c.getValue().getUserId())));
+        TableColumn<Order, String> byCol = new TableColumn<>("Customer");
+        byCol.setCellValueFactory(c -> new javafx.beans.property.SimpleStringProperty(c.getValue().getPlacedBy()));
 
-        TableColumn<Order, String> atCol = new TableColumn<>("Created At");
+        TableColumn<Order, String> atCol = new TableColumn<>("Completed Day");
         atCol.setCellValueFactory(c -> new javafx.beans.property.SimpleStringProperty(
-                c.getValue().getCreatedAt().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
+                c.getValue().getCreatedAt().toLocalDate().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
         ));
 
         TableColumn<Order, String> statusCol = new TableColumn<>("Status");

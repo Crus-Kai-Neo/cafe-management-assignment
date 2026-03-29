@@ -19,9 +19,15 @@ public class MainApp extends Application {
     public void start(Stage stage) {
         this.primaryStage = stage;
         this.primaryStage.setTitle("Café Order Management System");
-        // Prevent the window from being resized too small to be usable
+        
+        // Set initial window size and constraints
+        this.primaryStage.setWidth(1200);
+        this.primaryStage.setHeight(800);
         this.primaryStage.setMinWidth(900);
         this.primaryStage.setMinHeight(600);
+        
+        // Center on screen
+        this.primaryStage.centerOnScreen();
 
         try {
             dbInitializer = DatabaseInitializer.getInstance();
@@ -38,9 +44,7 @@ public class MainApp extends Application {
             analyticsService  = new AnalyticsService(orderDAO, orderItemDAO);
 
             showLoginView();
-            primaryStage.setWidth(1200);
-            primaryStage.setHeight(800);
-            primaryStage.show();
+            this.primaryStage.show();
 
         } catch (Exception e) {
             System.err.println("Error initialising application: " + e.getMessage());

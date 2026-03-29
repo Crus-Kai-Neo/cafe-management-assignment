@@ -16,6 +16,8 @@ import java.util.function.Consumer;
 
 public class PaymentPanel {
     private final VBox root = new VBox(12);
+    private final PaymentDAO paymentDAO;
+    private final OrderDAO orderDAO;
 
     // Instance fields so they can be refreshed externally
     private final Label itemsLabel  = new Label();
@@ -31,6 +33,8 @@ public class PaymentPanel {
     public PaymentPanel(Order initialOrder, PaymentDAO paymentDAO, OrderDAO orderDAO,
                         Consumer<Boolean> onPaymentComplete) {
         this.currentOrder = initialOrder;
+        this.paymentDAO = paymentDAO;
+        this.orderDAO = orderDAO;
 
         root.setPadding(new Insets(16));
         root.setMinWidth(230);
@@ -105,12 +109,24 @@ public class PaymentPanel {
                 return;
             }
             try {
-                PaymentService svc = new PaymentService(paymentDAO, orderDAO);
-                PaymentService.PaymentProcessResult result = svc.processPayment(
+                Order latest = this.orderDAO.findById(currentOrder.getId());
+                if (latest == null) {
+                    StyleManager.styleErrorLabel(statusLabel);
+                    statusLabel.setText("Order not found.");
+                    return;
+                }
+                if (!"CONFIRMED".equals(latest.getStatus())) {
+                    StyleManager.styleErrorLabel(statusLabel);
+                    statusLabel.setText("Cashier must confirm your order before you can pay.");
+                    return;
+                }
+
+                PaymentService svc = new PaymentService(this.paymentDAO, this.orderDAO);
+                PaymentService.PaymentProcessResult result = svc.requestPayment(
                     currentOrder.getId(), currentOrder.getTotal(), methodCombo.getValue());
                 if (result.isSuccess()) {
                     StyleManager.styleSuccessLabel(statusLabel);
-                    statusLabel.setText("\u2713 Payment successful! Order completed.");
+                    statusLabel.setText("Payment submitted. Cashier will confirm your payment.");
                     payBtn.setDisable(true);
                     methodCombo.setDisable(true);
                     amountField.setDisable(true);
@@ -125,19 +141,7 @@ public class PaymentPanel {
             }
         });
 
-        // Check if already paid
-        try {
-            Payment existing = paymentDAO.findByOrderId(initialOrder.getId());
-            if (existing != null && "COMPLETED".equals(existing.getPaymentStatus())) {
-                payBtn.setDisable(true);
-                methodCombo.setDisable(true);
-                amountField.setDisable(true);
-                StyleManager.styleSuccessLabel(statusLabel);
-                statusLabel.setText("\u2713 Paid via " + existing.getPaymentMethod());
-            }
-        } catch (SQLException ex) {
-            System.err.println("Error checking payment: " + ex.getMessage());
-        }
+        syncStateFromDatabase(initialOrder);
 
         root.getChildren().addAll(
             title, summaryBox, new Separator(),
@@ -164,13 +168,15 @@ public class PaymentPanel {
             amountField.setDisable(false);
             statusLabel.setText("");
         }
+        syncStateFromDatabase(order);
     }
 
     /**
      * Explicitly unlock the payment controls (called after order is successfully placed).
      */
     public void enablePayment() {
-        payBtn.setDisable(false);
+        // Customer can attempt payment only after order has been persisted.
+        payBtn.setDisable(currentOrder.getId() <= 0);
         methodCombo.setDisable(false);
         amountField.setDisable(false);
         statusLabel.setText("");
@@ -179,6 +185,51 @@ public class PaymentPanel {
     private void refreshSummaryLabels(Order order) {
         itemsLabel.setText("Items: " + order.getItems().size());
         totalLabel.setText("Total: $" + String.format("%.2f", order.getTotal()));
+    }
+
+    private void syncStateFromDatabase(Order order) {
+        if (order.getId() <= 0) {
+            return;
+        }
+        try {
+            Order latestOrder = orderDAO.findById(order.getId());
+            Payment existingPayment = paymentDAO.findByOrderId(order.getId());
+
+            if (existingPayment != null && "COMPLETED".equals(existingPayment.getPaymentStatus())) {
+                payBtn.setDisable(true);
+                methodCombo.setDisable(true);
+                amountField.setDisable(true);
+                StyleManager.styleSuccessLabel(statusLabel);
+                statusLabel.setText("Payment completed via " + existingPayment.getPaymentMethod());
+                return;
+            }
+
+            if (existingPayment != null && "PENDING".equals(existingPayment.getPaymentStatus())) {
+                payBtn.setDisable(true);
+                methodCombo.setDisable(true);
+                amountField.setDisable(true);
+                StyleManager.styleNormalLabel(statusLabel);
+                statusLabel.setText("Payment submitted. Waiting for cashier confirmation.");
+                return;
+            }
+
+            if (latestOrder != null && "CONFIRMED".equals(latestOrder.getStatus())) {
+                payBtn.setDisable(false);
+                methodCombo.setDisable(false);
+                amountField.setDisable(false);
+                StyleManager.styleNormalLabel(statusLabel);
+                statusLabel.setText("Order confirmed by cashier. You can now pay.");
+                return;
+            }
+
+            if (latestOrder != null && "PENDING".equals(latestOrder.getStatus())) {
+                payBtn.setDisable(true);
+                StyleManager.styleNormalLabel(statusLabel);
+                statusLabel.setText("Waiting for cashier to confirm your order.");
+            }
+        } catch (SQLException ex) {
+            System.err.println("Error syncing payment state: " + ex.getMessage());
+        }
     }
 
     public Parent getRoot() { return root; }

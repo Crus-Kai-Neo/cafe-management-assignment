@@ -5,16 +5,20 @@ import dao.MenuItemDAO;
 import dao.OrderDAO;
 import dao.OrderItemDAO;
 import dao.PaymentDAO;
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Parent;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
-import model.MenuItem;
 import model.Order;
 import model.OrderItem;
 import service.AnalyticsService;
+import service.PaymentService;
 import util.StyleManager;
+
+import java.util.List;
 
 public class CashierDashboardView {
     private final BorderPane root = new BorderPane();
@@ -27,10 +31,9 @@ public class CashierDashboardView {
                                 String username,
                                 int userId,
                                 Runnable onLogout) {
-        // Bug fix: create a single AnalyticsService instance, reused throughout
         AnalyticsService analyticsService = new AnalyticsService(orderDAO, orderItemDAO);
+        PaymentService paymentService = new PaymentService(paymentDAO, orderDAO);
 
-        // Top bar
         HBox topBar = new HBox();
         topBar.setPadding(new Insets(14, 20, 14, 20));
         topBar.setAlignment(Pos.CENTER_LEFT);
@@ -38,7 +41,7 @@ public class CashierDashboardView {
             "-fx-background-color: linear-gradient(to right, #2563EB, #1E40AF); " +
             "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.15), 6, 0, 0, 2);"
         );
-        Label title = new Label("Cashier Dashboard  \u2014  " + username);
+        Label title = new Label("Cashier Dashboard  -  " + username);
         title.setStyle("-fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: white;");
         Pane spacer = new Pane();
         HBox.setHgrow(spacer, Priority.ALWAYS);
@@ -48,179 +51,230 @@ public class CashierDashboardView {
         topBar.getChildren().addAll(title, spacer, logout);
         root.setTop(topBar);
 
-        // Three-column layout
         HBox centerBox = new HBox(12);
         centerBox.setPadding(new Insets(15));
         centerBox.setFillHeight(true);
 
-        final Order[] currentOrderRef = {orderController.createNewOrder(userId, username)};
+        ObservableList<Order> activeOrders = FXCollections.observableArrayList();
 
-        // ── LEFT: Menu panel ──────────────────────────────────────────────────
-        VBox menuPanel = new VBox(10);
-        menuPanel.setPadding(new Insets(14));
-        menuPanel.setMinWidth(220);
-        menuPanel.setPrefWidth(260);
-        menuPanel.setStyle(
+        Runnable reloadOrders = () -> {
+            activeOrders.clear();
+            try {
+                List<Order> pending = orderDAO.findByStatus("PENDING");
+                List<Order> confirmed = orderDAO.findByStatus("CONFIRMED");
+                List<Order> paymentPending = orderDAO.findByStatus("PAYMENT_PENDING");
+
+                for (Order o : pending) {
+                    o.getItems().clear();
+                    o.getItems().addAll(orderItemDAO.findByOrderId(o.getId(), menuItemDAO));
+                    activeOrders.add(o);
+                }
+                for (Order o : confirmed) {
+                    o.getItems().clear();
+                    o.getItems().addAll(orderItemDAO.findByOrderId(o.getId(), menuItemDAO));
+                    activeOrders.add(o);
+                }
+                for (Order o : paymentPending) {
+                    o.getItems().clear();
+                    o.getItems().addAll(orderItemDAO.findByOrderId(o.getId(), menuItemDAO));
+                    activeOrders.add(o);
+                }
+            } catch (Exception ex) {
+                System.err.println("Error loading orders for cashier: " + ex.getMessage());
+            }
+        };
+        reloadOrders.run();
+
+        VBox ordersListPanel = new VBox(10);
+        ordersListPanel.setPadding(new Insets(14));
+        ordersListPanel.setMinWidth(260);
+        ordersListPanel.setPrefWidth(300);
+        ordersListPanel.setStyle(
             "-fx-background-color: white; " +
             "-fx-border-color: #E5E7EB; -fx-border-width: 1; " +
-            "-fx-border-radius: 8px; -fx-background-radius: 8px; " +
-            "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.06), 6, 0, 0, 2);"
+            "-fx-border-radius: 8px; -fx-background-radius: 8px;"
         );
-        Label menuTitle = new Label("Menu");
-        StyleManager.styleHeadingLabel(menuTitle);
-        ListView<MenuItem> menuList = new ListView<>();
-        menuList.setStyle("-fx-border-color: #E5E7EB; -fx-border-radius: 4px;");
-        try { menuList.setItems(menuItemDAO.findAllObservable()); }
-        catch (Exception e) { System.err.println("Error loading menu: " + e.getMessage()); }
-        VBox.setVgrow(menuList, Priority.ALWAYS);
-        Label qtyLabel = new Label("Quantity:");
-        qtyLabel.setStyle("-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #374151;");
-        Spinner<Integer> qtySpinner = new Spinner<>(1, 100, 1);
-        qtySpinner.setEditable(true);
-        qtySpinner.setMaxWidth(Double.MAX_VALUE);
-        Button addBtn = new Button("Add to Order");
-        StyleManager.stylePrimaryButton(addBtn);
-        addBtn.setMaxWidth(Double.MAX_VALUE);
-        addBtn.setPrefHeight(38);
-        menuPanel.getChildren().addAll(menuTitle, menuList, qtyLabel, qtySpinner, addBtn);
 
-        // ── CENTER: Order panel ───────────────────────────────────────────────
-        VBox orderPanel = new VBox(10);
-        orderPanel.setPadding(new Insets(14));
-        orderPanel.setStyle(
+        Label ordersListTitle = new Label("Action Required Orders");
+        StyleManager.styleHeadingLabel(ordersListTitle);
+
+        ListView<Order> ordersList = new ListView<>(activeOrders);
+        ordersList.setCellFactory(param -> new ListCell<>() {
+            @Override
+            protected void updateItem(Order item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(null);
+                } else {
+                    setText("#" + item.getId() + " | " + item.getStatus() + " | $" + String.format("%.2f", item.getTotal()));
+                }
+            }
+        });
+        VBox.setVgrow(ordersList, Priority.ALWAYS);
+
+        Button refreshBtn = new Button("Refresh Orders");
+        StyleManager.styleSecondaryButton(refreshBtn);
+        refreshBtn.setMaxWidth(Double.MAX_VALUE);
+        refreshBtn.setOnAction(e -> reloadOrders.run());
+
+        ordersListPanel.getChildren().addAll(ordersListTitle, ordersList, refreshBtn);
+
+        VBox detailsPanel = new VBox(10);
+        detailsPanel.setPadding(new Insets(14));
+        detailsPanel.setStyle(
             "-fx-background-color: white; " +
             "-fx-border-color: #E5E7EB; -fx-border-width: 1; " +
-            "-fx-border-radius: 8px; -fx-background-radius: 8px; " +
-            "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.06), 6, 0, 0, 2);"
+            "-fx-border-radius: 8px; -fx-background-radius: 8px;"
         );
-        HBox.setHgrow(orderPanel, Priority.ALWAYS);
-        Label orderTitle = new Label("Current Order");
-        StyleManager.styleHeadingLabel(orderTitle);
-        TableView<OrderItem> orderTable = new TableView<>();
-        orderTable.setPlaceholder(new Label("No items yet. Select from the menu."));
+        HBox.setHgrow(detailsPanel, Priority.ALWAYS);
+
+        Label detailsTitle = new Label("Order Workflow");
+        StyleManager.styleHeadingLabel(detailsTitle);
+
+        TableView<OrderItem> detailsTable = new TableView<>();
+        detailsTable.setPlaceholder(new Label("Select an order to view details."));
         TableColumn<OrderItem, String> itemCol = new TableColumn<>("Item");
         itemCol.setCellValueFactory(c -> new javafx.beans.property.SimpleStringProperty(c.getValue().getMenuItem().getName()));
         TableColumn<OrderItem, String> qtyCol = new TableColumn<>("Qty");
         qtyCol.setCellValueFactory(c -> new javafx.beans.property.SimpleStringProperty(String.valueOf(c.getValue().getQuantity())));
-        qtyCol.setMaxWidth(55);
-        TableColumn<OrderItem, String> priceCol = new TableColumn<>("Unit Price");
-        priceCol.setCellValueFactory(c -> new javafx.beans.property.SimpleStringProperty("$" + String.format("%.2f", c.getValue().getMenuItem().getPrice())));
         TableColumn<OrderItem, String> subCol = new TableColumn<>("Subtotal");
         subCol.setCellValueFactory(c -> new javafx.beans.property.SimpleStringProperty("$" + String.format("%.2f", c.getValue().getSubtotal())));
-        orderTable.getColumns().addAll(itemCol, qtyCol, priceCol, subCol);
-        orderTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
-        VBox.setVgrow(orderTable, Priority.ALWAYS);
-        Label totalLabel = new Label("Running Total: $0.00");
-        totalLabel.setStyle("-fx-font-size: 15px; -fx-font-weight: bold; -fx-text-fill: #10B981;");
-        Button removeBtn = new Button("Remove Selected");
-        StyleManager.styleDangerButton(removeBtn);
-        removeBtn.setMaxWidth(Double.MAX_VALUE);
-        removeBtn.setPrefHeight(36);
-        Button placeBtn = new Button("Place Order");
-        StyleManager.styleSecondaryButton(placeBtn);
-        placeBtn.setMaxWidth(Double.MAX_VALUE);
-        placeBtn.setPrefHeight(36);
-        Button cancelBtn = new Button("Cancel Order");
-        cancelBtn.setStyle(
-            "-fx-font-size: 13px; -fx-padding: 8px; " +
-            "-fx-background-color: #F3F4F6; -fx-text-fill: #6B7280; " +
-            "-fx-border-radius: 6px; -fx-background-radius: 6px; -fx-cursor: hand;"
-        );
-        cancelBtn.setMaxWidth(Double.MAX_VALUE);
-        cancelBtn.setPrefHeight(36);
-        VBox orderButtonBox = new VBox(8, removeBtn, placeBtn, cancelBtn);
-        orderPanel.getChildren().addAll(orderTitle, orderTable, totalLabel, orderButtonBox);
+        detailsTable.getColumns().addAll(itemCol, qtyCol, subCol);
+        detailsTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        VBox.setVgrow(detailsTable, Priority.ALWAYS);
 
-        // ── RIGHT: Sales Summary panel ────────────────────────────────────────
+        Label statusLabel = new Label("Select an order.");
+        StyleManager.styleNormalLabel(statusLabel);
+        Label totalLabel = new Label("Order Total: $0.00");
+        totalLabel.setStyle("-fx-font-size: 15px; -fx-font-weight: bold; -fx-text-fill: #10B981;");
+
+        Button confirmOrderBtn = new Button("Confirm Order");
+        StyleManager.styleSecondaryButton(confirmOrderBtn);
+        confirmOrderBtn.setMaxWidth(Double.MAX_VALUE);
+
+        Button confirmPaymentBtn = new Button("Confirm Payment");
+        StyleManager.stylePrimaryButton(confirmPaymentBtn);
+        confirmPaymentBtn.setMaxWidth(Double.MAX_VALUE);
+
+        Button generateBillBtn = new Button("Generate Bill");
+        StyleManager.styleSecondaryButton(generateBillBtn);
+        generateBillBtn.setMaxWidth(Double.MAX_VALUE);
+
+        HBox buttons = new HBox(8, confirmOrderBtn, confirmPaymentBtn, generateBillBtn);
+        HBox.setHgrow(confirmOrderBtn, Priority.ALWAYS);
+        HBox.setHgrow(confirmPaymentBtn, Priority.ALWAYS);
+        HBox.setHgrow(generateBillBtn, Priority.ALWAYS);
+
+        detailsPanel.getChildren().addAll(detailsTitle, detailsTable, totalLabel, statusLabel, buttons);
+
         VBox summaryPanel = new VBox(10);
         summaryPanel.setPadding(new Insets(14));
-        summaryPanel.setMinWidth(200);
-        summaryPanel.setPrefWidth(250);
+        summaryPanel.setMinWidth(220);
+        summaryPanel.setPrefWidth(260);
         summaryPanel.setStyle(
             "-fx-background-color: white; " +
             "-fx-border-color: #E5E7EB; -fx-border-width: 1; " +
-            "-fx-border-radius: 8px; -fx-background-radius: 8px; " +
-            "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.06), 6, 0, 0, 2);"
+            "-fx-border-radius: 8px; -fx-background-radius: 8px;"
         );
+
         Label summaryTitle = new Label("Sales Summary");
         StyleManager.styleHeadingLabel(summaryTitle);
-        Label salesLabel = new Label("Total Sales: $0.00");
+        Label salesLabel = new Label();
+        Label ordersCountLabel = new Label();
+        Label popularLabel = new Label();
         StyleManager.styleSubheadingLabel(salesLabel);
-        Label popularLabel = new Label("Most Popular: N/A");
+        StyleManager.styleSubheadingLabel(ordersCountLabel);
         StyleManager.styleSubheadingLabel(popularLabel);
-        summaryPanel.getChildren().addAll(summaryTitle, new Separator(), salesLabel, popularLabel);
 
-        // ── Event handlers ────────────────────────────────────────────────────
-        addBtn.setOnAction(e -> {
-            MenuItem selected = menuList.getSelectionModel().getSelectedItem();
-            if (selected == null) {
-                showAlert(Alert.AlertType.WARNING, "Warning", "Please select a menu item first.");
-                return;
-            }
-            orderController.addItemToOrder(currentOrderRef[0], selected, qtySpinner.getValue());
-            orderTable.getItems().setAll(currentOrderRef[0].getItems());
-            totalLabel.setText("Running Total: $" + String.format("%.2f", currentOrderRef[0].getTotal()));
-        });
-
-        removeBtn.setOnAction(e -> {
-            OrderItem selected = orderTable.getSelectionModel().getSelectedItem();
-            if (selected == null) {
-                showAlert(Alert.AlertType.WARNING, "Warning", "Please select an item to remove.");
-                return;
-            }
-            orderController.removeItemFromOrder(currentOrderRef[0], selected.getMenuItem().getId());
-            orderTable.getItems().setAll(currentOrderRef[0].getItems());
-            totalLabel.setText("Running Total: $" + String.format("%.2f", currentOrderRef[0].getTotal()));
-        });
-
-        placeBtn.setOnAction(e -> {
-            if (currentOrderRef[0].getItems().isEmpty()) {
-                showAlert(Alert.AlertType.WARNING, "Warning", "Order is empty. Add items first.");
-                return;
-            }
-            boolean success = orderController.placeOrder(currentOrderRef[0]);
-            if (!success) {
-                showAlert(Alert.AlertType.ERROR, "Error", "Failed to place order.");
-                return;
-            }
-            showAlert(Alert.AlertType.INFORMATION, "Success", "Order placed successfully.");
-            // Refresh analytics using the single shared instance
-            try {
-                salesLabel.setText("Total Sales: $" + String.format("%.2f", analyticsService.getTotalRevenue()));
-                popularLabel.setText("Most Popular: " + analyticsService.getMostPopularItem());
-            } catch (Exception ex) {
-                System.err.println("Error updating analytics: " + ex.getMessage());
-            }
-            currentOrderRef[0] = orderController.createNewOrder(userId, username);
-            orderTable.getItems().clear();
-            totalLabel.setText("Running Total: $0.00");
-        });
-
-        cancelBtn.setOnAction(e -> {
-            orderController.cancelOrder(currentOrderRef[0]);
-            currentOrderRef[0] = orderController.createNewOrder(userId, username);
-            orderTable.getItems().clear();
-            totalLabel.setText("Running Total: $0.00");
-        });
-
-        // Initialize analytics
-        try {
+        Runnable refreshAnalytics = () -> {
             salesLabel.setText("Total Sales: $" + String.format("%.2f", analyticsService.getTotalRevenue()));
+            ordersCountLabel.setText("Completed Orders: " + analyticsService.getTotalCompletedOrders());
             popularLabel.setText("Most Popular: " + analyticsService.getMostPopularItem());
-        } catch (Exception ex) {
-            System.err.println("Error loading analytics: " + ex.getMessage());
-        }
+        };
+        refreshAnalytics.run();
 
-        // Layout
-        centerBox.getChildren().addAll(menuPanel, orderPanel, summaryPanel);
-        HBox.setHgrow(menuPanel, Priority.NEVER);
-        HBox.setHgrow(orderPanel, Priority.ALWAYS);
-        HBox.setHgrow(summaryPanel, Priority.NEVER);
+        summaryPanel.getChildren().addAll(summaryTitle, new Separator(), salesLabel, ordersCountLabel, popularLabel);
 
-        VBox mainContent = new VBox(centerBox);
-        mainContent.setFillWidth(true);
-        VBox.setVgrow(centerBox, Priority.ALWAYS);
-        root.setCenter(mainContent);
+        ordersList.getSelectionModel().selectedItemProperty().addListener((obs, oldV, selected) -> {
+            detailsTable.getItems().clear();
+            if (selected == null) {
+                totalLabel.setText("Order Total: $0.00");
+                statusLabel.setText("Select an order.");
+                return;
+            }
+            detailsTable.getItems().addAll(selected.getItems());
+            totalLabel.setText("Order Total: $" + String.format("%.2f", selected.getTotal()));
+            statusLabel.setText("Current Status: " + selected.getStatus());
+        });
+
+        confirmOrderBtn.setOnAction(e -> {
+            Order selected = ordersList.getSelectionModel().getSelectedItem();
+            if (selected == null) {
+                showAlert(Alert.AlertType.WARNING, "Warning", "Select an order first.");
+                return;
+            }
+            if (!"PENDING".equals(selected.getStatus())) {
+                showAlert(Alert.AlertType.INFORMATION, "Info", "Only PENDING orders can be confirmed.");
+                return;
+            }
+            try {
+                orderDAO.updateStatus(selected.getId(), "CONFIRMED");
+                showAlert(Alert.AlertType.INFORMATION, "Order Confirmed", "Order confirmed. Customer can now submit payment.");
+                reloadOrders.run();
+            } catch (Exception ex) {
+                showAlert(Alert.AlertType.ERROR, "Error", "Failed to confirm order: " + ex.getMessage());
+            }
+        });
+
+        confirmPaymentBtn.setOnAction(e -> {
+            Order selected = ordersList.getSelectionModel().getSelectedItem();
+            if (selected == null) {
+                showAlert(Alert.AlertType.WARNING, "Warning", "Select an order first.");
+                return;
+            }
+            if (!"PAYMENT_PENDING".equals(selected.getStatus())) {
+                showAlert(Alert.AlertType.INFORMATION, "Info", "Customer must submit payment first.");
+                return;
+            }
+
+            PaymentService.PaymentProcessResult result = paymentService.confirmPaymentByCashier(selected.getId());
+            if (result.isSuccess()) {
+                showAlert(Alert.AlertType.INFORMATION, "Success", "The order has been completed.");
+                reloadOrders.run();
+                refreshAnalytics.run();
+            } else {
+                showAlert(Alert.AlertType.ERROR, "Error", result.getMessage());
+            }
+        });
+
+        generateBillBtn.setOnAction(e -> {
+            Order selected = ordersList.getSelectionModel().getSelectedItem();
+            if (selected == null) {
+                showAlert(Alert.AlertType.WARNING, "Warning", "Select an order first.");
+                return;
+            }
+            StringBuilder bill = new StringBuilder();
+            bill.append("Order #").append(selected.getId()).append("\n");
+            bill.append("Status: ").append(selected.getStatus()).append("\n");
+            bill.append("Day: ").append(selected.getCreatedAt().toLocalDate()).append("\n");
+            bill.append("------------------------------\n");
+            for (OrderItem item : selected.getItems()) {
+                bill.append(item.getMenuItem().getName())
+                    .append(" x")
+                    .append(item.getQuantity())
+                    .append(" = $")
+                    .append(String.format("%.2f", item.getSubtotal()))
+                    .append("\n");
+            }
+            bill.append("------------------------------\n");
+            bill.append("Total: $").append(String.format("%.2f", selected.getTotal()));
+            showAlert(Alert.AlertType.INFORMATION, "Generated Bill", bill.toString());
+        });
+
+        centerBox.getChildren().addAll(ordersListPanel, detailsPanel, summaryPanel);
+        HBox.setHgrow(detailsPanel, Priority.ALWAYS);
+
+        root.setCenter(centerBox);
     }
 
     public Parent getRoot() { return root; }

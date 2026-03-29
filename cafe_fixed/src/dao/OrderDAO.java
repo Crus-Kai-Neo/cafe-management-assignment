@@ -26,9 +26,12 @@ public class OrderDAO extends BaseDAO {
     }
 
     public Order findById(int orderId) throws SQLException {
-        String sql = "SELECT o.order_id, o.user_id, o.status, o.order_date, u.username " +
+        String sql = "SELECT o.order_id, o.user_id, o.status, o.order_date, u.username, " +
+                "COALESCE(SUM(oi.subtotal), 0) AS order_total " +
                 "FROM orders o JOIN users u ON o.user_id = u.user_id " +
-                "WHERE o.order_id = ?";
+                "LEFT JOIN order_items oi ON o.order_id = oi.order_id " +
+                "WHERE o.order_id = ? " +
+                "GROUP BY o.order_id, o.user_id, o.status, o.order_date, u.username";
         try (Connection conn = getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setInt(1, orderId);
@@ -43,9 +46,13 @@ public class OrderDAO extends BaseDAO {
 
     public List<Order> findByUserId(int userId) throws SQLException {
         List<Order> orders = new ArrayList<>();
-        String sql = "SELECT o.order_id, o.user_id, o.status, o.order_date, u.username " +
+        String sql = "SELECT o.order_id, o.user_id, o.status, o.order_date, u.username, " +
+                "COALESCE(SUM(oi.subtotal), 0) AS order_total " +
                 "FROM orders o JOIN users u ON o.user_id = u.user_id " +
-                "WHERE o.user_id = ?";
+                "LEFT JOIN order_items oi ON o.order_id = oi.order_id " +
+                "WHERE o.user_id = ? " +
+                "GROUP BY o.order_id, o.user_id, o.status, o.order_date, u.username " +
+                "ORDER BY o.order_date DESC";
         try (Connection conn = getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setInt(1, userId);
@@ -60,8 +67,11 @@ public class OrderDAO extends BaseDAO {
 
     public List<Order> findAll() throws SQLException {
         List<Order> orders = new ArrayList<>();
-        String sql = "SELECT o.order_id, o.user_id, o.status, o.order_date, u.username " +
-                "FROM orders o JOIN users u ON o.user_id = u.user_id";
+        String sql = "SELECT o.order_id, o.user_id, o.status, o.order_date, u.username, " +
+                "COALESCE(SUM(oi.subtotal), 0) AS order_total " +
+                "FROM orders o JOIN users u ON o.user_id = u.user_id " +
+                "LEFT JOIN order_items oi ON o.order_id = oi.order_id " +
+                "GROUP BY o.order_id, o.user_id, o.status, o.order_date, u.username";
         try (Connection conn = getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql);
              ResultSet rs = stmt.executeQuery()) {
@@ -74,9 +84,12 @@ public class OrderDAO extends BaseDAO {
 
     public List<Order> findByStatus(String status) throws SQLException {
         List<Order> orders = new ArrayList<>();
-        String sql = "SELECT o.order_id, o.user_id, o.status, o.order_date, u.username " +
+        String sql = "SELECT o.order_id, o.user_id, o.status, o.order_date, u.username, " +
+                "COALESCE(SUM(oi.subtotal), 0) AS order_total " +
                 "FROM orders o JOIN users u ON o.user_id = u.user_id " +
-                "WHERE o.status = ?";
+                "LEFT JOIN order_items oi ON o.order_id = oi.order_id " +
+                "WHERE o.status = ? " +
+                "GROUP BY o.order_id, o.user_id, o.status, o.order_date, u.username";
         try (Connection conn = getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setString(1, status);
@@ -115,8 +128,10 @@ public class OrderDAO extends BaseDAO {
         Timestamp ts = rs.getTimestamp("order_date");
         LocalDateTime orderDate = ts != null ? ts.toLocalDateTime() : LocalDateTime.now();
         String status = rs.getString("status");
+        double total = rs.getDouble("order_total");
         Order order = new Order(id, userId, placedBy, orderDate);
         order.setStatus(status);
+        order.setPersistedTotal(total);
         return order;
     }
 }

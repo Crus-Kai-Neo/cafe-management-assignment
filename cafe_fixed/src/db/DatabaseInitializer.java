@@ -13,109 +13,78 @@ import java.util.List;
 
 public class DatabaseInitializer {
     private static DatabaseInitializer instance;
-    
-    private final UserDAO userDAO;
+
+    private final UserDAO     userDAO;
     private final MenuItemDAO menuItemDAO;
-    private final OrderDAO orderDAO;
+    private final OrderDAO    orderDAO;
     private final OrderItemDAO orderItemDAO;
-    private final PaymentDAO paymentDAO;
-    
+    private final PaymentDAO  paymentDAO;
+
     private DatabaseInitializer() {
-        this.userDAO = new UserDAO();
-        this.menuItemDAO = new MenuItemDAO();
-        this.orderDAO = new OrderDAO();
+        this.userDAO      = new UserDAO();
+        this.menuItemDAO  = new MenuItemDAO();
+        this.orderDAO     = new OrderDAO();
         this.orderItemDAO = new OrderItemDAO();
-        this.paymentDAO = new PaymentDAO();
+        this.paymentDAO   = new PaymentDAO();
     }
-    
+
     public static DatabaseInitializer getInstance() {
-        if (instance == null) {
-            instance = new DatabaseInitializer();
-        }
+        if (instance == null) instance = new DatabaseInitializer();
         return instance;
     }
-    
+
     public void seedDatabaseIfNeeded() {
         try {
             List<User> users = userDAO.findAll();
             if (!users.isEmpty()) {
-                System.out.println("Database already seeded. Skipping seed data insertion.");
+                System.out.println("Database already seeded. Skipping.");
                 return;
             }
-            
             System.out.println("Seeding database with initial data...");
 
-            User admin = new User("admin", "Admin123", "admin@cafe.local", Role.ADMIN);
-            User cashier = new User("cashier", "Cash123", "cashier@cafe.local", Role.CASHIER);
-            User customer = new User("customer", "Cust123", "customer@cafe.local", Role.CUSTOMER);
-            
-            userDAO.create(admin);
-            userDAO.create(cashier);
-            userDAO.create(customer);
+            userDAO.create(new User("admin",    "Admin123", "admin@cafe.local",    Role.ADMIN));
+            userDAO.create(new User("cashier",  "Cash123",  "cashier@cafe.local",  Role.CASHIER));
+            userDAO.create(new User("customer", "Cust123",  "customer@cafe.local", Role.CUSTOMER));
 
-            MenuItem espresso = new MenuItem(1, "Espresso", 3.00);
-            MenuItem cappuccino = new MenuItem(2, "Cappuccino", 4.50);
-            MenuItem latte = new MenuItem(3, "Latte", 4.00);
-            MenuItem mocha = new MenuItem(4, "Mocha", 5.00);
-            MenuItem croissant = new MenuItem(5, "Croissant", 2.75);
-            MenuItem muffin = new MenuItem(6, "Blueberry Muffin", 3.25);
-            
-            menuItemDAO.create(espresso);
-            menuItemDAO.create(cappuccino);
-            menuItemDAO.create(latte);
-            menuItemDAO.create(mocha);
-            menuItemDAO.create(croissant);
-            menuItemDAO.create(muffin);
-            
+            menuItemDAO.create(new MenuItem(0, "Espresso",       3.00));
+            menuItemDAO.create(new MenuItem(0, "Cappuccino",     4.50));
+            menuItemDAO.create(new MenuItem(0, "Latte",          4.00));
+            menuItemDAO.create(new MenuItem(0, "Mocha",          5.00));
+            menuItemDAO.create(new MenuItem(0, "Croissant",      2.75));
+            menuItemDAO.create(new MenuItem(0, "Blueberry Muffin", 3.25));
+
             System.out.println("Database seeded successfully!");
-            
         } catch (SQLException e) {
             System.err.println("Error seeding database: " + e.getMessage());
             e.printStackTrace();
         }
     }
-    
-    public ObservableList<User> loadUsers() {
-        ObservableList<User> users = FXCollections.observableArrayList();
-        try {
-            users.addAll(userDAO.findAll());
-        } catch (SQLException e) {
-            System.err.println("Error loading users: " + e.getMessage());
-        }
-        return users;
-    }
-    
+
     public ObservableList<MenuItem> loadMenuItems() {
         ObservableList<MenuItem> items = FXCollections.observableArrayList();
-        try {
-            items.addAll(menuItemDAO.findAll());
-        } catch (SQLException e) {
-            System.err.println("Error loading menu items: " + e.getMessage());
-        }
+        try { items.addAll(menuItemDAO.findAll()); }
+        catch (SQLException e) { System.err.println("Error loading menu items: " + e.getMessage()); }
         return items;
     }
-    
+
     public ObservableList<Order> loadCompletedOrders() {
         ObservableList<Order> orders = FXCollections.observableArrayList();
         try {
-            List<Order> completedOrders = orderDAO.findByStatus("COMPLETED");
-
-            for (Order order : completedOrders) {
-                List<model.OrderItem> items = orderItemDAO.findByOrderId(order.getId(), menuItemDAO);
-                order.getItems().addAll(items);
+            List<Order> completed = orderDAO.findByStatus("COMPLETED");
+            for (Order o : completed) {
+                List<model.OrderItem> items = orderItemDAO.findByOrderId(o.getId(), menuItemDAO);
+                o.getItems().addAll(items);
             }
-            
-            orders.addAll(completedOrders);
+            orders.addAll(completed);
         } catch (SQLException e) {
             System.err.println("Error loading completed orders: " + e.getMessage());
         }
         return orders;
     }
-    
-    public UserDAO getUserDAO() { return userDAO; }
-    public MenuItemDAO getMenuItemDAO() { return menuItemDAO; }
-    public OrderDAO getOrderDAO() { return orderDAO; }
-    public OrderItemDAO getOrderItemDAO() { return orderItemDAO; }
-    public PaymentDAO getPaymentDAO() { return paymentDAO; }
-}
 
+    public UserDAO      getUserDAO()      { return userDAO; }
+    public MenuItemDAO  getMenuItemDAO()  { return menuItemDAO; }
+    public OrderDAO     getOrderDAO()     { return orderDAO; }
+    public OrderItemDAO getOrderItemDAO() { return orderItemDAO; }
+    public PaymentDAO   getPaymentDAO()   { return paymentDAO; }
+}
